@@ -10,7 +10,7 @@ The top-level directory layout in a filecopy target file system will be as follo
 * deleted - contains shadow copies of files that were deleted (but a backup copy of them existed at some time).
 
 ## Set-up
-filecopy relies on MySQL and PHP on the host system. Simply copy the files to a directoy of your choice (inside a www root might be appropriate).
+filecopy relies on MySQL and PHP on the host system. Simply copy the files to a directory of your choice (inside a www root might be appropriate).
 * import sql/filecopy-structure.sql as MySQL root
 * create a corresponding MySQL user with privileges for only that database
 * modify cfg/config.inc.php to suit your needs - this file defines the database connection, the actual backup "sets" and other optionally important stuff
