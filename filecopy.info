@@ -1,0 +1,14 @@
+name = Filecopy
+description = "File indexing, backup and recovery system"
+version = 2.0a
+package = HaPeBe
+core = 7.x
+files[] = classes/BackupMain.php
+files[] = classes/BackupFile.php
+files[] = classes/BackupReport.php
+files[] = classes/FileCopyMessage.php
+files[] = classes/Project.php
+files[] = classes/FX.php
+files[] = classes/TemplateUTF8.php
+files[] = classes/UTF8Spreadsheet.php
+files[] = classes/htmlMimeMail5/htmlMimeMail5.php

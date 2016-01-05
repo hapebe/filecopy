@@ -1,0 +1,704 @@
+<?php
+// require_once('D:/htdocs/filecopy/lib/FileCopyMessage.php');
+// require_once('D:/htdocs/filecopy/lib/BackupFile.php');
+// require_once('D:/htdocs/filecopy/lib/BackupMain.php');
+
+if (!isset($GLOBALS['backupMain'])) {
+	require('D:/htdocs/filecopy/cfg/filesystem.config.inc.php');
+	
+	db_set_active('filecopy');
+
+	$m = new BackupMain();
+	// supports only the first backup_sets entry:
+	list($src_path,$dst_path,$archive_path,$del_path) = explode("|",$backup_sets[0]);
+
+	$m->srcDir = $src_path;
+	$m->dstDir = $dst_path;
+	$m->archiveDir = $archive_path;
+	$m->delDir = $del_path;
+
+	$m->excludePatterns = $exclude_dirs;
+	$m->providentDeletion = $providentDeletion; // config value
+	
+	$GLOBALS['backupMain'] = $m;
+	
+	db_set_active(); // back to default
+} // print_r($GLOBALS['backupMain']); exit;
+
+/**
+* Valid permissions for this module
+* @return array
+*/
+function filecopy_perm() {
+  return array('read filecopy content');
+}
+
+function filecopy_admin() {
+	$form = array();
+  $form['basic'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Basic settings'),
+    // '#tree' => TRUE,
+  );
+  $form['basic']['filecopy_networkpathtranslation'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Server local path to network drive path translation.'),
+    '#default_value' => variable_get('filecopy_networkpathtranslation', ""),
+    '#description' => t("The value will be interpreted using it as the argument xxxxx in array(xxxxx)."),
+    '#required' => TRUE,
+  );
+  return system_settings_form($form);
+}
+
+function filecopy_admin_validate($form, &$form_state) {
+  $filecopy_networkpathtranslation = $form_state['values']['filecopy_maxdisp'];
+  /*
+  if () {
+    form_set_error('filecopy_networkpathtranslation', t('This text cannot be interpreted as an argument to array().'));
+  }
+  */
+}
+
+function filecopy_menu() {
+  $items = array();
+
+  $items['admin/settings/filecopy'] = array(
+    'title' => t('filecopy'),
+    'description' => t('Server-specific settings for the filecopy module.'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('filecopy_admin'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+   );
+   $items['filecopy/ls'] = array(
+   	'title' => t('Browse directories'),
+   	'description' => t('List the contents of a file system directory as seen by filecopy.'),
+   	'page callback' => 'filecopy_ls',
+   	'access arguments' => array('read filecopy content'),
+    'type' => MENU_CALLBACK,
+   );
+   $items['filecopy/duplicates'] = array(
+   	'title' => t('Duplicates'),
+   	'description' => t('List duplicate files.'),
+    'page arguments' => array(2),
+   	'page callback' => 'filecopy_duplicates',
+   	'access arguments' => array('read filecopy content'),
+    'type' => MENU_CALLBACK,
+   );
+   $items['filecopy/f/%'] = array(
+   	'title' => t('File details'),
+   	'description' => t('List the details of a file as stored in backup history.'),
+    'page arguments' => array(2),
+   	'page callback' => 'filecopy_f',
+   	'access arguments' => array('read filecopy content'),
+    'type' => MENU_CALLBACK,
+   );
+   $items['filecopy/download/%/%'] = array(
+   	'title' => t('File download'),
+   	'description' => t('Download a file version from the backup system.'),
+    'page arguments' => array(2,3),
+   	'page callback' => 'filecopy_download',
+   	'access arguments' => array('read filecopy content'),
+    'type' => MENU_CALLBACK,
+   );
+
+  return $items;
+}
+
+function filecopy_block($op = 'list', $delta = 0, $edit = array()) { 
+	/*
+	$block = array();
+  switch($op) {
+
+  	case "list":
+    	$block[0]["info"] = t('filecopy search form.');
+    	return $block;
+
+    case "view": default:
+      switch ($delta) {
+        case 0:
+          $block['subject'] = t('Search for images');
+          $block['content'] = filecopySearcher::getSearchForm();
+          break;
+      }
+    	return $block;
+  }
+  */
+}
+
+
+function filecopy_search($op = 'search', $keys = array() ) {
+	// drupal_set_message(t('Filecopy database was searched: '.$op), 'info');
+
+  switch ($op) {
+    case 'name':
+      return t('Backup files');
+
+    case 'reset':
+      // noop
+      return;
+
+    case 'status':
+    	// noop - no indexing
+      return array('remaining' => 0, 'total' => 0);
+
+    case 'admin':
+      // noop - no options
+      $form = array();
+      return $form;
+
+    case 'search':
+      /*
+      // Build matching conditions
+      list($join1, $where1) = _db_rewrite_sql();
+      $arguments1 = array();
+      $conditions1 = 'n.status = 1';
+
+      if ($type = search_query_extract($keys, 'type')) {
+        $types = array();
+        foreach (explode(',', $type) as $t) {
+          $types[] = "n.type = '%s'";
+          $arguments1[] = $t;
+        }
+        $conditions1 .= ' AND ('. implode(' OR ', $types) .')';
+        $keys = search_query_insert($keys, 'type');
+      }
+
+      if ($category = search_query_extract($keys, 'category')) {
+        $categories = array();
+        foreach (explode(',', $category) as $c) {
+          $categories[] = "tn.tid = %d";
+          $arguments1[] = $c;
+        }
+        $conditions1 .= ' AND ('. implode(' OR ', $categories) .')';
+        $join1 .= ' INNER JOIN {term_node} tn ON n.vid = tn.vid';
+        $keys = search_query_insert($keys, 'category');
+      }
+      */
+
+
+      // Do search.
+			db_set_active('filecopy');
+		
+		
+			$hits = array();
+			if (is_string($keys)) $keys = array($keys);
+			// drupal_set_message(t('keys: '.print_r($keys, true)), 'info');
+			foreach ($keys as $key) {
+				$result = db_query("SELECT DISTINCT(fileid) FROM files WHERE fname LIKE '%s%%'", $key);
+				while ($row = db_fetch_array($result)) {
+					$hits[$row["fileid"]] = true;
+				}
+			}
+			$hits = array_keys($hits);
+      
+      // Load results.
+      $results = array();
+      foreach ($hits as $hit) {
+        // Build the node body.
+				$result = db_query("SELECT * FROM files WHERE fileid = %d", $hit);
+				// only consider the first row:
+				if($row = db_fetch_array($result)) {
+					extract($row);
+				} else {
+					continue;
+				}
+
+        /*
+        $node->build_mode = NODE_BUILD_SEARCH_RESULT;
+        $node = node_build_content($node, FALSE, FALSE);
+        $node->body = drupal_render($node->content);
+
+        // Fetch comments for snippet.
+        $node->body .= module_invoke('comment', 'nodeapi', $node, 'update index');
+        // Fetch terms for snippet.
+        $node->body .= module_invoke('taxonomy', 'nodeapi', $node, 'update index');
+
+        $extra = node_invoke_nodeapi($node, 'search result');
+        */
+
+        $results[] = array(
+          'link' => url('filecopy/f/'. $fileid /*, array('absolute' => TRUE) */ ),
+          'type' => t('Backup files'),
+          'title' => $path."/".$fname,
+          'user' => false,
+          'date' => Functions::parseDBDate($mtime),
+          'node' => false,
+          'extra' => null /* $extra */,
+          'score' => 1,
+          'snippet' => false,
+        );
+      }
+
+			//Switch back to the default connection when finished.
+			db_set_active('default');
+
+
+      return $results;
+  }
+
+}
+
+function filecopy_download($fileid, $version) {
+	$fileid = check_plain($fileid);
+	if (!is_numeric($fileid)) {
+		drupal_set_message(t('Invalid file was specified.'), 'error');
+		drupal_goto('filecopy');
+		return false;
+	}
+	$version = check_plain($version);
+	if (!is_numeric($version)) {
+		drupal_set_message(t('Invalid file was specified.'), 'error');
+		drupal_goto('filecopy');
+		return false;
+	}
+	
+	db_set_active('filecopy');
+
+
+	// actual file:
+	$f = new BackupFile($fileid);
+	$f->version = $version;
+	$f->fromDB();
+	$source = $f->getFullBackupPath($GLOBALS['backupMain']);
+	// echo $source; exit;
+	
+	if(isset($source)) {
+		// echo $source; exit;
+
+	  ob_end_clean();
+	
+	  foreach ($headers as $header) {
+	    // To prevent HTTP header injection, we delete new lines that are
+	    // not followed by a space or a tab.
+	    // See http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2
+	    $header = preg_replace('/\r?\n(?!\t| )/', '', $header);
+	    drupal_set_header($header);
+	  }
+    drupal_set_header('Content-type: application/octet-stream');
+    drupal_set_header('Content-disposition: attachment; filename="'.$fname.'"');
+	
+	  // TODO: CHECK REMOVED for PiR
+	  // $source = file_create_path($source);
+	
+	  // Transfer file in 64*1024 byte chunks to save memory usage.
+	  if ($fd = fopen($source, 'rb')) {
+	    while (!feof($fd)) {
+	      print fread($fd, 64*1024);
+	    }
+	    fclose($fd);
+	  } else {
+    	drupal_not_found();
+  	}
+
+  	exit();
+	}
+
+	//Switch back to the default connection when finished.
+	db_set_active('default');
+
+	drupal_set_message(t('This file/version cannot be found.'), 'error');
+	drupal_goto('filecopy');
+}
+
+/**
+ * display detailed information about one file
+ */
+function filecopy_f($arg = FALSE) {
+	drupal_add_css(drupal_get_path('module', 'filecopy')."/ls.css");
+	
+	if (!$arg) {
+		drupal_set_message(t('No file was specified.'), 'error');
+		drupal_goto('filecopy');
+		return false;
+	}
+	$fileid = check_plain($arg);
+	if (!is_numeric($fileid)) {
+		drupal_set_message(t('Invalid file was specified.'), 'error');
+		drupal_goto('filecopy');
+		return false;
+	}
+
+	$retval = array();
+
+	db_set_active('filecopy');
+
+
+	// actual files:
+	$files = array();
+	$result = db_query("SELECT * FROM files WHERE fileid = $fileid ORDER BY version DESC", $d);
+	while($row = db_fetch_array($result)) {
+		$files[$row['uid']] = $row;
+	}
+	
+	uasort($files, 'filecopy_cmp_files');
+
+	if (count($files) > 0) 
+	$cnt = 0;
+	foreach ($files as $uid => $f) {
+		extract($f);
+		
+		$f = new BackupFile($fileid);
+		$f->version = $version;
+		$f->fromDB();
+		
+		if ($cnt == 0) {
+			// display folder name, including links on all "parents"
+			$retval[] = '<img src="'.base_path().drupal_get_path('module', 'filecopy').'/img/icons/icon-folder.gif" alt="">&nbsp;';
+			$parts = explode("/", $path);
+			$combined = "";
+			$htmlParts = array();
+			foreach ($parts as $part) {
+				if (mb_strlen($combined) > 0) $htmlParts[] = "/";
+				$combined .= $part;
+				$htmlParts[] = 
+					'<a href="'.base_path().'filecopy/ls?d='.urlencode($combined).'">'
+					.filecopy_displayName($part)
+					.'</a>';
+				$combined .= "/";			
+			}
+			$retval[] = implode("", $htmlParts);
+			$retval[] = '<h2>'.FX::html_encode($fname).'</h2>';
+			$retval[] = '<table>';
+			$retval[] = '<tr>';
+			$retval[] = '<th style="text-align:center;"><img src="'.base_path().drupal_get_path('module', 'filecopy').'/img/icons/layers.png" alt="" title="status"></th>';
+			$retval[] = '<th>'.t('Filename').'</th>';
+			$retval[] = '<th style="text-align:center;"><img src="'.base_path().drupal_get_path('module', 'filecopy').'/img/icons/date.png" alt="" title="last modification was ... ago"></th>';
+			$retval[] = '<th>'.t('Size').'</th>';
+			$retval[] = '<th>'.t('Identical files').'</th>';
+		}
+		
+		// look for identical other files:
+		if ($size > 0) {
+			$marker = array();
+			$marker2 = "";
+			$result = db_query("SELECT * FROM files WHERE sha1 LIKE '%s' AND fileid <> %d", $sha1, $f->fileid);
+			while ($row = db_fetch_array($result)) {
+				$marker2 = '<span class="error">*</span>';
+
+				$cssClass = 'current';
+				if ($row['status'] == 'A') $cssClass = 'archived';
+				if ($row['status'] == 'D') $cssClass = 'deleted';
+
+				$marker[] = 
+					'<span class="'.$cssClass.'">'
+					.'<img src="'.base_path().drupal_get_path('module', 'filecopy').'/img/icons/arrow_divide_right.png" alt="">'
+					.'<a href="'.base_path().'filecopy/f/'.$row["fileid"].'">'
+					.FX::html_encode( /* $row["uid"]." = ". */ filecopy_displayName($row["path"]."/".$row["fname"]))
+					.'</a>'
+					.'</span>';
+			}
+			if (count($marker) == 0) $marker[] = "-";
+			$marker = implode("<br>\n", $marker);
+		}
+		
+		if (!file_exists(dirname(__FILE__).'/img/icons/icon-'.$extension.'.gif')) { $extension = "unknown"; }
+		$cssClass = 'current';
+		$statusImg = 'star.png';
+		if ($status == 'A') { $cssClass = 'archived'; $statusImg = 'database.png'; }
+		if ($status == 'D') { $cssClass = 'deleted'; $statusImg = 'database_delete.png'; }
+		
+		// does the backed up file exist after all?
+		$msgMissing = ''; $storedCopy = $f->getFullBackupPath($GLOBALS['backupMain']);
+		if (!file_exists(utf8_decode($storedCopy))) {
+			$msgMissing = '<strong> - the stored copy of the file ('.FX::html_encode($storedCopy).') is missing!</strong>';
+		}
+		
+		$mTimestamp = Functions::parseDBDate($mtime);
+		$ago = time() - $mTimestamp;
+		$retval[] =
+			'<tr valign="top">'
+			
+			.'<td><img src="'.base_path().drupal_get_path('module', 'filecopy').'/img/icons/'.$statusImg.'" alt="'.$status.'" title="'.$status.'"></td>'
+
+			.'<td>'.(($status == 'A')?'&nbsp;&nbsp;&nbsp;':'')
+			.'<span class="'.$cssClass.'" title="ID: '.$fileid.', version '.$version.'">'
+			.'<img src="'.base_path().drupal_get_path('module', 'filecopy').'/img/icons/icon-'.$extension.'.gif" alt="'.$extension.'"> '
+			.'<a href="'.base_path().'filecopy/download/'.$fileid.'/'.$version.'/'.urlencode($fname).'">'
+			.FX::html_encode($fname)
+			.$msgMissing // either empty or an error message
+			.'</a>'
+			.'</span></td>'
+			
+			.'<td style="text-align:right"><img src="'.base_path().drupal_get_path('module', 'filecopy').'/img/icons/1x16_transparent.png" alt="">'.Functions::flexFormatTime($ago, false, false, false).'</td>'
+			
+			.'<td>'.number_format($size, 0, ',', '.').' Bytes</td>'
+			
+			.'<td><small>'.$marker.'</small></td>'
+			
+			.'</tr>';
+			
+		$cnt ++;
+	}
+	$retval[] = '</table>';
+
+	//Switch back to the default connection when finished.
+	db_set_active('default');
+
+	return implode("\n", $retval);
+}	
+
+
+function filecopy_duplicates($arg0 = FALSE) {
+	drupal_add_css(drupal_get_path('module', 'filecopy')."/ls.css");
+	
+	$minSize = 1000000; // 1 mio bytes
+	if (($arg0 !== FALSE) && is_numeric($arg0) && ($arg0 >= 0)) $minSize = $arg0;
+	
+	$retval = array();
+
+	$sha1counts = array();
+	
+	db_set_active('filecopy');
+	$result = db_query("SELECT uid, sha1 FROM `files` WHERE status='C' AND size > %d", $minSize);	
+	while($row = db_fetch_array($result)) {
+		extract($row);
+		
+		if (!isset($sha1counts[$sha1])) $sha1counts[$sha1] = 0;
+		$sha1counts[$sha1] ++;
+	}
+	
+	arsort($sha1counts);
+	foreach ($sha1counts as $sha1 => $cnt) {
+		if ($cnt == 1) break;
+
+		// actual files:
+		$result = db_query("SELECT * FROM files WHERE sha1 LIKE '%s' AND status = 'C'", $sha1);
+		$loop = 0;
+		while($row = db_fetch_array($result)) {
+			extract($row);
+			if ($loop == 0) {
+				$retval[] = $cnt .'*'.$sha1.' ('.sprintf('%01.3f', $size/1024/1024).' MiByte)<br>';
+				$retval[] = '<blockquote>';
+			}
+
+			$retval[] = '&nbsp;'.filecopy_displayName($path.'/'.$fname).' (f#'.$fileid.')<br>';
+			$loop ++;
+		}
+		$retval[] = '</blockquote>';
+
+	}
+
+	db_set_active('default');
+	
+	return implode("\n", $retval);
+}
+
+
+function filecopy_ls() {
+	drupal_add_css(drupal_get_path('module', 'filecopy')."/ls.css");
+	
+	$retval = array();
+	
+	$dDepth = 0;
+	if (isset($_GET["d"])) {
+		$d = html_entity_decode(check_plain($_GET["d"]));
+		$dDepth = substr_count($d, "/");
+	}
+
+	// parent dir?
+	$retval[] = '<ul>';
+	if (isset($d)) {
+		$displayName = filecopy_displayName($d);
+
+		if (substr_count($d, "/") > 0) {
+			$parentD = explode("/", $d);
+			array_pop($parentD);
+			$parentD = implode("/", $parentD);
+			$pDisplay = filecopy_displayName($parentD);
+			$retval[] = 
+				'<li>'
+				.'<img src="'.base_path().drupal_get_path('module', 'filecopy').'/img/icons/icon-folder-up.gif" alt="up to parent directory"> '
+				.'<a href="'.base_path().'filecopy/ls?d='.urlencode($parentD).'">'
+				.$pDisplay
+				.'</a></li>';
+			}
+	}
+	
+
+	// content title:
+	$retval[] = '<ul>';
+	$contentTitle = t('Root directory');
+	if (isset($d)) $contentTitle = $displayName; // FX::html_encode($displayName);
+	$retval[] = 
+		'<li><h2><img src="'
+		.base_path().drupal_get_path('module', 'filecopy').'/img/icons/icon-folder.gif" alt="file folder"> '
+		.$contentTitle.'</h2></li>';
+
+	db_set_active('filecopy');
+	// sub-dirs:
+	if (isset($d)) {
+		$sql = "SELECT DISTINCT(path) FROM files WHERE path LIKE '".$d."%' ORDER BY path ASC"; 
+		// $sql = str_replace('&', '%', $sql);
+		// echo $sql . ' - '; exit;
+		$result = _db_query($sql);
+	} else {
+		$result = db_query('SELECT DISTINCT(path) FROM files ORDER BY path ASC');
+	}
+	$dirs = array(); $cnt = 0;
+	while($row = db_fetch_array($result)) {
+		$path = $row['path'];
+		$depth = substr_count($path, "/");
+		
+		// if there is a parent dir, only accept dirs which are 1 level deeper.
+		if (isset($dDepth)) {
+			$additionalPath = str_replace($d, '', $path);
+			$parts = explode('/', $additionalPath); // [0] contains an empty string, [1] the first sub-dir.
+			
+			if (empty($parts[1])) continue;
+			
+			// echo $parts[1] . "<br>\n";
+			if (isset($d)) {
+				$path = $d. '/' . $parts[1];
+			} else {
+				$path = 'D:/' . $parts[1];
+			}
+			
+			$depth = $dDepth +1;
+		}
+		
+		if (!isset($dirs[$path])) {
+			$dirs[$path] = $depth;	$cnt ++;
+		}
+	}
+	// print_r($dirs); exit;
+	// echo $cnt . ' results.'; exit;
+	if (!isset($d)) {
+		// hack for ERP.local: add U: drive
+		if (file_exists('D:/install')) $dirs['D:/install'] = 1;
+		if (file_exists('D:/nutzerordner/personal')) $dirs['D:/nutzerordner/personal'] = 1;
+		if (file_exists('D:/nutzerordner/angebote')) $dirs['D:/nutzerordner/angebote'] = 1;
+	}
+	
+	if (!empty($dirs)) $retval[] = '<ul>'; // <h3>'.t('Sub-directories:').'</h3>
+
+	ksort($dirs);
+	$i = 0;
+	foreach ($dirs as $dir => $depth) {
+		if (!isset($d) and ($depth > 1)) break;
+
+		$displayName = filecopy_displayName($dir);
+		
+		$retval[] = 
+			'<li><img src="'
+			.base_path().drupal_get_path('module', 'filecopy').'/img/icons/icon-folder.gif" alt="file folder"> '
+			.'<a href="'.base_path().'filecopy/ls?d='.urlencode($dir).'">'
+			.$displayName
+			.'</a></li>';
+		$i++;
+	}
+	
+	if (!empty($dirs)) $retval[] = '</ul>'; // close sub-dir ul
+	$retval[] = '</ul>'; // close own ul
+	$retval[] = '</ul>'; // close parent dir ul
+	
+	
+	// actual files:
+	$files = array();
+	if (isset($d)) {
+		$result = db_query("SELECT * FROM files WHERE path LIKE '%s' ORDER BY fileid, version DESC", $d);
+		while($row = db_fetch_array($result)) {
+			$files[$row['uid']] = $row;
+		}
+	}
+	
+	uasort($files, 'filecopy_cmp_files');
+
+	if (count($files) > 0) $retval[] = '<table>';
+	foreach ($files as $uid => $f) {
+		extract($f);
+		
+		// look for identical other files:
+		if ($size > 0) {
+			$marker = array();
+			$marker2 = "";
+			$result = db_query("SELECT * FROM files WHERE sha1 LIKE '%s' AND fileid <> %d", $sha1, $f["fileid"]);
+			while ($row = db_fetch_array($result)) {
+				$marker2 = '<span class="error">*</span>';
+
+				$cssClass = 'current';
+				if ($row['status'] == 'A') $cssClass = 'archived';
+				if ($row['status'] == 'D') $cssClass = 'deleted';
+
+				$marker[] = 
+					'<span class="'.$cssClass.'">'
+					.'<a href="'.base_path().'filecopy/f/'.$row['fileid'].'">'
+					.FX::html_encode( /* $row["uid"]." = ". */ filecopy_displayName($row["path"]."/".$row["fname"]))
+					.'</a>'
+					.'</span>';
+			}
+			$marker = implode("<br>\n", $marker);
+		}
+		
+		if (!file_exists(dirname(__FILE__).'/img/icons/icon-'.$extension.'.gif')) { $extension = "unknown"; }
+		$cssClass = 'current';
+		if ($status == 'A') $cssClass = 'archived';
+		if ($status == 'D') $cssClass = 'deleted';
+		
+		$mTimestamp = Functions::parseDBDate($mtime);
+		$ago = time() - $mTimestamp;
+		$retval[] =
+			'<tr valign="top"><td>'
+			.(($status == 'A')?'&nbsp;&nbsp;&nbsp;':'')
+			.'<span class="'.$cssClass.'" title="ID: '.$fileid.', version '.$version.'">'
+			.'<img src="'.base_path().drupal_get_path('module', 'filecopy').'/img/icons/icon-'.$extension.'.gif" alt="'.$extension.'"> '
+			.'<a href="'.base_path().'filecopy/f/'.$fileid.'">'
+			.FX::html_encode($fname)
+			.'</a>'
+			.'</span></td>'
+			.'<td>['.$status.']</td>'
+			.'<td>'.Functions::flexFormatTime($ago, false, false, false).'</td>'
+			.'<td>'.$marker2.'</td>'.'<td><small>'.$marker.'</small></td>'
+			.'</tr>';
+	}
+	if (count($files) > 0) $retval[] = '</table>';
+
+	
+	
+	
+	
+	//Switch back to the default connection when finished.
+	db_set_active('default');
+
+	return implode("\n", $retval);
+}
+
+function filecopy_displayName($n) {
+	static $pathDict;
+	if (!isset($pathDict)) {
+		eval('$pathDict = array('.variable_get('filecopy_networkpathtranslation', '').');'); 	// print_r($pathDict); exit;
+	}
+	
+	foreach ($pathDict as $local => $net) {
+		$n = str_replace($local, $net, $n);
+	}
+	
+	return $n;
+}
+
+function filecopy_cmp_files($f1, $f2) {
+	if (strtoupper($f1['fname']) < strtoupper($f2['fname'])) return -1;
+	if (strtoupper($f1['fname']) > strtoupper($f2['fname'])) return 1;
+	if ( ($f1['status'] == 'C') and ($f2['status'] != 'C') ) return -1;
+	if ( ($f1['status'] != 'C') and ($f2['status'] == 'C') ) return 1;
+	if ( ($f1['status'] == 'D') ) return -1;
+	if ( ($f2['status'] == 'D') ) return 1;
+	if ($f1['mtime'] > $f2['mtime']) return -1;
+	if ($f1['mtime'] < $f2['mtime']) return 1;
+	return 0;
+}
+
+
+
+/*
+function FX::html_encode($var) {
+	return htmlentities($var, ENT_QUOTES, 'UTF-8') ;
+}
+
+function __autoload($clsName) {
+	$f = "D:/htdocs/agora2/sites/all/classes/".$clsName.".php";
+	
+	if (file_exists($f)) require_once($f);
+}
+*/
+?>
